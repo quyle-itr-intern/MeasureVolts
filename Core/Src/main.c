@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,6 +46,8 @@
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim8;
 
+UART_HandleTypeDef huart2;
+
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -54,19 +58,48 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM8_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-volatile float fadc_volts = 0;
+#define RANGE_PWM      (18000 - 1)
+uint8_t rx_data = 0;
+uint8_t count = 0;
+char data_buffer[5];
+char volts[5];
+float fvolts = 0;
+float fadc_volts = 0;
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+
+	if(rx_data == '\n')
+	{
+		data_buffer[count++]='\n';
+		HAL_UART_Transmit(huart,data_buffer,count,HAL_MAX_DELAY);
+		strcpy(volts, data_buffer);
+		memset(data_buffer, 0, count);
+		count = 0;
+		fvolts = atof(volts);
+		fvolts = (fvolts/3.3)*RANGE_PWM;
+		__HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, (uint32_t) fvolts);
+	}
+	else
+	{
+		data_buffer[count++] = rx_data;
+	}
+	HAL_UART_Receive_IT(&huart2,&rx_data,1);
+}
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 	fadc_volts = HAL_ADC_GetValue(&hadc1)*1.0/4095 * 3.3;
 	HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 }
+
 /* USER CODE END 0 */
 
 /**
@@ -100,14 +133,18 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM3_Init();
   MX_TIM8_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_ADC_Start_IT(&hadc1);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim8, TIM_CHANNEL_1);
 
-  float fvolts = (1.0/3.3)*999;
-    __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, (uint32_t) fvolts);
+  fvolts = (2/3.3)*RANGE_PWM;
+  __HAL_TIM_SET_COMPARE(&htim8, TIM_CHANNEL_1, (uint32_t) fvolts);
+
+  HAL_UART_Receive_IT(&huart2, &rx_data, 1);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -305,9 +342,9 @@ static void MX_TIM8_Init(void)
 
   /* USER CODE END TIM8_Init 1 */
   htim8.Instance = TIM8;
-  htim8.Init.Prescaler = 18-1;
+  htim8.Init.Prescaler = 0;
   htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim8.Init.Period = 1000-1;
+  htim8.Init.Period = 18000-1;
   htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim8.Init.RepetitionCounter = 0;
   htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -356,6 +393,39 @@ static void MX_TIM8_Init(void)
 
   /* USER CODE END TIM8_Init 2 */
   HAL_TIM_MspPostInit(&htim8);
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
 
 }
 
